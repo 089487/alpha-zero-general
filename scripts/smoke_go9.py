@@ -143,15 +143,25 @@ def smoke_episode(game, nnet, num_mcts_sims, timeout_seconds):
 
 def main():
     parser = argparse.ArgumentParser(description="Smoke test the go9 game and PyTorch model.")
+    parser.add_argument(
+        "--stage",
+        choices=("model", "rules", "mcts", "episode", "all"),
+        default="model",
+        help="highest smoke-test stage to run",
+    )
     parser.add_argument("--num-mcts-sims", type=int, default=2)
-    parser.add_argument("--episode", action="store_true", help="also run Coach.executeEpisode")
     parser.add_argument("--episode-timeout", type=int, default=20)
     args = parser.parse_args()
 
     game, nnet, board = smoke_game_and_model()
-    smoke_rules(game, board)
-    smoke_mcts(game, nnet, board, args.num_mcts_sims)
-    if args.episode:
+
+    if args.stage in ("rules", "mcts", "episode", "all"):
+        smoke_rules(game, board)
+
+    if args.stage in ("mcts", "episode", "all"):
+        smoke_mcts(game, nnet, board, args.num_mcts_sims)
+
+    if args.stage in ("episode", "all"):
         smoke_episode(game, nnet, args.num_mcts_sims, args.episode_timeout)
 
     print("\nSmoke test finished.")

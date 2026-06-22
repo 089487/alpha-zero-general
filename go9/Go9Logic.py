@@ -10,10 +10,11 @@ Board data:
 Squares are stored and manipulated as (x,y) tuples.
 x is the column, y is the row.
 '''
+
 class Board():
 
-    # list of all 8 directions on the board, as (x,y) offsets
-    __directions = [(1,1),(1,0),(1,-1),(0,-1),(-1,-1),(-1,0),(-1,1),(0,1)]
+    # list of all 4 directions on the board, as (x,y) offsets
+    __directions = ((1,0),(0,1),(-1,0),(0,-1))
 
     def __init__(self, n):
         "Set up initial board configuration."
@@ -24,15 +25,46 @@ class Board():
         for i in range(self.n):
             self.pieces[i] = [0]*self.n
 
-        # Set up the initial 4 pieces.
-        self.pieces[int(self.n/2)-1][int(self.n/2)] = 1
-        self.pieces[int(self.n/2)][int(self.n/2)-1] = 1
-        self.pieces[int(self.n/2)-1][int(self.n/2)-1] = -1;
-        self.pieces[int(self.n/2)][int(self.n/2)] = -1;
-
     # add [][] indexer syntax to the Board
     def __getitem__(self, index): 
         return self.pieces[index]
+    
+    def _neighbors(self, x, y):
+        for dx, dy in self.__directions:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < self.n and 0 <= ny < self.n:
+                yield nx, ny
+
+    def _get_group(self, x, y):
+        color = self[x][y]
+        if color == 0:
+            return set()
+
+        group = set()
+        stack = [(x, y)]
+
+        while stack:
+            cx, cy = stack.pop()
+            if (cx, cy) in group:
+                continue
+            if self[cx][cy] != color:
+                continue
+
+            group.add((cx, cy))
+            for nx, ny in self._neighbors(cx, cy):
+                if (nx, ny) not in group and self[nx][ny] == color:
+                    stack.append((nx, ny))
+
+        return group
+    def _get_liberties(self, group):
+        liberties = set()
+
+        for x, y in group:
+            for nx, ny in self._neighbors(x, y):
+                if self[nx][ny] == 0:
+                    liberties.add((nx, ny))
+
+        return liberties
 
     def countDiff(self, color):
         """Counts the # pieces of the given color
@@ -55,18 +87,15 @@ class Board():
         # Get all the squares with pieces of the given color.
         for y in range(self.n):
             for x in range(self.n):
-                if self[x][y]==color:
-                    newmoves = self.get_moves_for_square((x,y))
-                    moves.update(newmoves)
+                if self[x][y]==0:
+                    moves.add((x,y))
         return list(moves)
 
     def has_legal_moves(self, color):
         for y in range(self.n):
             for x in range(self.n):
-                if self[x][y]==color:
-                    newmoves = self.get_moves_for_square((x,y))
-                    if len(newmoves)>0:
-                        return True
+                if self[x][y]==0:
+                    return True
         return False
 
     def get_moves_for_square(self, square):
@@ -106,12 +135,10 @@ class Board():
 
         # Add the piece to the empty square.
         # print(move)
-        flips = [flip for direction in self.__directions
-                      for flip in self._get_flips(move, direction, color)]
-        assert len(list(flips))>0
-        for x, y in flips:
-            #print(self[x][y],color)
-            self[x][y] = color
+        x,y = move
+        assert self[x][y]==0
+        self[x][y] = color
+        
 
     def _discover_move(self, origin, direction):
         """ Returns the endpoint for a legal move, starting at the given origin,
