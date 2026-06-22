@@ -88,13 +88,42 @@ class Board():
         """Counts the # pieces of the given color
         (1 for white, -1 for black, 0 for empty spaces)"""
         count = 0
-        for y in range(self.n):
-            for x in range(self.n):
+        for x in range(self.n):
+            for y in range(self.n):
                 if self[x][y]==color:
                     count += 1
                 if self[x][y]==-color:
                     count -= 1
         return count
+    def countRegionDiff(self, color):
+        
+        visited = set()
+        count = 0
+        for x in range(self.n):
+            for y in range(self.n):
+                if self[x][y] == 0 and (x, y) not in visited:
+                    region = set()
+                    stack = [(x, y)]
+                    touches_color = False
+                    touches_opponent = False
+
+                    while stack:
+                        cx, cy = stack.pop()
+                        if (cx, cy) in region:
+                            continue
+                        region.add((cx, cy))
+                        visited.add((cx, cy))
+
+                        for nx, ny in self._neighbors(cx, cy):
+                            if self[nx][ny] == color:
+                                touches_color = True
+                            elif self[nx][ny] == -color:
+                                touches_opponent = True
+                            elif self[nx][ny] == 0 and (nx, ny) not in region:
+                                stack.append((nx, ny))
+                    count += touches_color*len(region) - touches_opponent*len(region)
+        return count
+
 
     def get_legal_moves(self, color):
         """Returns all the legal moves for the given color.

@@ -97,7 +97,7 @@ class Go9Game(Game):
     def getScore(self, board, player):
         b = Board(self.n)
         b.pieces = np.copy(board)
-        return b.countDiff(player)
+        return b.countDiff(player) + b.countRegionDiff(player)
 
     @staticmethod
     def display(board):
