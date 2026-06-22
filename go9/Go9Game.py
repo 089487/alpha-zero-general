@@ -46,12 +46,10 @@ class Go9Game(Game):
     def getValidMoves(self, board, player):
         # return a fixed size binary vector
         valids = [0]*self.getActionSize()
+        valids[-1] = 1 # in go pass always is a valid move
         b = Board(self.n)
         b.pieces = np.copy(board)
         legalMoves =  b.get_legal_moves(player)
-        if len(legalMoves)==0:
-            valids[-1]=1
-            return np.array(valids)
         for x, y in legalMoves:
             valids[self.n*x+y]=1
         return np.array(valids)

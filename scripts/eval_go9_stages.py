@@ -133,7 +133,7 @@ def eval_suicide():
     moves = legal_set(board, 1)
     check((0, 0) in moves, "capture-that-saves-self is legal")
     board.execute_move((0, 0), 1)
-    check_equal(board.pieces[0][1], 0, "captured adjacent opponent stone removed after saving move")
+    check_equal(board.pieces[1][0], 0, "captured adjacent opponent stone at (1, 0) removed after saving move")
 
 
 def eval_game():

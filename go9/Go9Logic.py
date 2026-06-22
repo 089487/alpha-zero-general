@@ -66,6 +66,24 @@ class Board():
 
         return liberties
 
+    def _is_legal_move(self, move, color):
+        x, y = move
+        if self[x][y] !=0 : 
+            return False
+        self[x][y] = color
+        # check if this move can capture any opponent pieces
+        capture = False
+        for nx, ny in self._neighbors(x, y):
+            if self[nx][ny] == -color:
+                opponent_group = self._get_group(nx, ny)
+                liberties = self._get_liberties(opponent_group)
+                if len(liberties) == 0 and len(opponent_group) > 0:
+                    capture = True
+                    break
+        illegal = not capture and len(self._get_liberties(self._get_group(x, y))) == 0
+        self[x][y] = 0
+        return not illegal
+
     def countDiff(self, color):
         """Counts the # pieces of the given color
         (1 for white, -1 for black, 0 for empty spaces)"""
@@ -87,16 +105,12 @@ class Board():
         # Get all the squares with pieces of the given color.
         for y in range(self.n):
             for x in range(self.n):
-                if self[x][y]==0:
+                if self._is_legal_move((x,y), color):
                     moves.add((x,y))
         return list(moves)
 
     def has_legal_moves(self, color):
-        for y in range(self.n):
-            for x in range(self.n):
-                if self[x][y]==0:
-                    return True
-        return False
+        return len(self.get_legal_moves(color)) > 0
 
     def get_moves_for_square(self, square):
         """Returns all the legal moves that use the given square as a base.
@@ -138,7 +152,14 @@ class Board():
         x,y = move
         assert self[x][y]==0
         self[x][y] = color
-        
+        for nx,ny in self._neighbors(x,y):
+            if self[nx][ny]==-color:
+                opponent_group = self._get_group(nx,ny)
+                liberties = self._get_liberties(opponent_group)
+                if len(liberties)==0:
+                    for gx,gy in opponent_group:
+                        self[gx][gy] = 0
+
 
     def _discover_move(self, origin, direction):
         """ Returns the endpoint for a legal move, starting at the given origin,
