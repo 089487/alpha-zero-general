@@ -1,5 +1,6 @@
 import argparse
 import math
+import signal
 import sys
 from pathlib import Path
 
@@ -196,6 +197,115 @@ def eval_mcts():
     check(math.isclose(float(sum(pi)), 1.0, rel_tol=1e-5, abs_tol=1e-5), f"MCTS policy sums to 1, got {sum(pi)}")
 
 
+def eval_terminal():
+    print("\n== Stage 9: Terminal Safety ==")
+    from go9.Go9Game import Go9Game
+
+    game = Go9Game(9)
+    board = game.getInitBoard()
+    check_equal(game.getGameEnded(board, 1), 0, "empty board is not terminal")
+
+    full = np.ones((9, 9), dtype=int)
+    full[0][0] = -1
+    result_for_black = game.getGameEnded(full, 1)
+    result_for_white = game.getGameEnded(full, -1)
+    check(result_for_black != 0, f"full board is terminal for player 1, got {result_for_black}")
+    check(result_for_white != 0, f"full board is terminal for player -1, got {result_for_white}")
+    check_equal(result_for_black, -result_for_white, "terminal result changes sign by player perspective")
+
+
+def eval_scoring():
+    print("\n== Stage 10: Scoring ==")
+    from go9.Go9Game import Go9Game
+
+    game = Go9Game(9)
+
+    board = np.zeros((9, 9), dtype=int)
+    board[0][0] = 1
+    board[1][0] = 1
+    board[8][8] = -1
+    check(game.getScore(board, 1) > 0, "player with more stones has positive score")
+    check(game.getScore(board, -1) < 0, "opponent perspective has negative score")
+
+    territory = np.zeros((9, 9), dtype=int)
+    territory[0][1] = 1
+    territory[1][0] = 1
+    territory[1][2] = 1
+    territory[2][1] = 1
+    check(game.getScore(territory, 1) >= 5, "surrounded point counts as player 1 area")
+
+    neutral = np.zeros((9, 9), dtype=int)
+    neutral[0][1] = 1
+    neutral[1][0] = -1
+    check_equal(game.getScore(neutral, 1), 0, "neutral/shared empty area is not counted")
+
+
+def tiny_args(checkpoint="./temp/go9_eval/"):
+    from utils import dotdict
+
+    return dotdict(
+        {
+            "numIters": 1,
+            "numEps": 1,
+            "tempThreshold": 15,
+            "updateThreshold": 0.6,
+            "maxlenOfQueue": 200000,
+            "numMCTSSims": 2,
+            "arenaCompare": 2,
+            "cpuct": 1,
+            "checkpoint": checkpoint,
+            "load_model": False,
+            "load_folder_file": (checkpoint, "best.pth.tar"),
+            "numItersForTrainExamplesHistory": 20,
+        }
+    )
+
+
+def run_with_timeout(timeout_seconds, fn):
+    def timeout_handler(signum, frame):
+        raise TimeoutError(f"operation timed out after {timeout_seconds}s")
+
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(timeout_seconds)
+    try:
+        return fn()
+    finally:
+        signal.alarm(0)
+
+
+def eval_episode():
+    print("\n== Stage 11: Episode Smoke ==")
+    from Coach import Coach
+    from go9.Go9Game import Go9Game
+    from go9.pytorch.NNet import NNetWrapper
+
+    game = Go9Game(9)
+    nnet = NNetWrapper(game)
+    coach = Coach(game, nnet, tiny_args())
+    examples = run_with_timeout(30, coach.executeEpisode)
+
+    check(len(examples) > 0, f"episode produced examples, got {len(examples)}")
+    board, pi, value = examples[0]
+    check_equal(board.shape, (9, 9), "example board shape")
+    check_equal(len(pi), 82, "example policy length")
+    check(-1.0001 <= float(value) <= 1.0001, f"example value is in [-1, 1], got {value}")
+
+
+def eval_tiny_train():
+    print("\n== Stage 12: Tiny Training Smoke ==")
+    from Coach import Coach
+    from go9.Go9Game import Go9Game
+    from go9.pytorch.NNet import NNetWrapper
+
+    game = Go9Game(9)
+    nnet = NNetWrapper(game)
+    coach = Coach(game, nnet, tiny_args())
+    run_with_timeout(90, coach.learn)
+    checkpoint_dir = ROOT / "temp" / "go9_eval"
+    check(checkpoint_dir.exists(), "tiny training checkpoint directory exists")
+    check(any(checkpoint_dir.iterdir()), "tiny training checkpoint directory is not empty")
+
+
 STAGES = {
     "empty": eval_empty,
     "moves": eval_moves,
@@ -205,9 +315,26 @@ STAGES = {
     "game": eval_game,
     "model": eval_model,
     "mcts": eval_mcts,
+    "terminal": eval_terminal,
+    "scoring": eval_scoring,
+    "episode": eval_episode,
+    "tiny-train": eval_tiny_train,
 }
 
-ORDER = ["empty", "moves", "groups", "capture", "suicide", "game", "model", "mcts"]
+ORDER = [
+    "empty",
+    "moves",
+    "groups",
+    "capture",
+    "suicide",
+    "game",
+    "model",
+    "mcts",
+    "terminal",
+    "scoring",
+    "episode",
+    "tiny-train",
+]
 
 
 def main():
