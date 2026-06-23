@@ -14,9 +14,10 @@ class Go9NNet(nn.Module):
         self.board_x, self.board_y = game.getBoardSize()
         self.action_size = game.getActionSize()
         self.args = args
+        self.input_channels = args.input_channels
 
         super(Go9NNet, self).__init__()
-        self.conv1 = nn.Conv2d(1, args.num_channels, 3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(self.input_channels, args.num_channels, 3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(args.num_channels, args.num_channels, 3, stride=1, padding=1)
         self.conv3 = nn.Conv2d(args.num_channels, args.num_channels, 3, stride=1)
         self.conv4 = nn.Conv2d(args.num_channels, args.num_channels, 3, stride=1)
@@ -38,7 +39,14 @@ class Go9NNet(nn.Module):
 
     def forward(self, s):
         #                                                           s: batch_size x board_x x board_y
-        s = s.view(-1, 1, self.board_x, self.board_y)                # batch_size x 1 x board_x x board_y
+        if s.dim() == 3:
+            if self.input_channels != 1:
+                raise ValueError("Expected 4D input for {} channels, but got 3D tensor".format(self.input_channels))
+            s = s.view(-1,1,self.board_x,self.board_y)                # batch_size x 1 x board_x x board_y
+        elif s.dim() == 4:
+            s = s.view(-1, self.input_channels, self.board_x, self.board_y)                # batch_size x input_channels x board_x x board_y
+        else:
+            raise ValueError("Expected input tensor to have 3 or 4 dimensions, but got {}".format(s.dim()))
         s = F.relu(self.bn1(self.conv1(s)))                          # batch_size x num_channels x board_x x board_y
         s = F.relu(self.bn2(self.conv2(s)))                          # batch_size x num_channels x board_x x board_y
         s = F.relu(self.bn3(self.conv3(s)))                          # batch_size x num_channels x (board_x-2) x (board_y-2)

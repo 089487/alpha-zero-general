@@ -57,7 +57,14 @@ def state_pass_count(state):
             if key in state:
                 return int(state[key])
     if isinstance(state, (tuple, list)) and len(state) >= 2:
-        return int(state[1])
+        metadata = state[1]
+        if isinstance(metadata, (tuple, list)):
+            return int(metadata[0])
+        if isinstance(metadata, dict):
+            for key in ("consecutive_passes", "pass_count", "passes"):
+                if key in metadata:
+                    return int(metadata[key])
+        return int(metadata)
     raise AssertionError(
         "state must expose consecutive pass count, e.g. (stones, pass_count) or a dict with consecutive_passes"
     )
@@ -215,8 +222,24 @@ def eval_model():
 
     game = Go9Game(9)
     nnet = NNetWrapper(game)
-    board = game.getCanonicalForm(game.getInitBoard(), 1)
-    pi, value = nnet.predict(board)
+    state = game.getCanonicalForm(game.getInitBoard(), 1)
+
+    plane_fn = None
+    for name in ("_planes", "_state_to_planes", "state_to_planes"):
+        if hasattr(nnet, name):
+            plane_fn = getattr(nnet, name)
+            break
+    if plane_fn is not None:
+        planes = np.asarray(plane_fn(state))
+        check_equal(planes.shape[-2:], (9, 9), "model input spatial shape")
+        check(planes.ndim == 3, f"model input is channel-first planes, got {planes.shape}")
+        conv1 = getattr(nnet.nnet, "conv1", None)
+        check(
+            conv1 is None or getattr(conv1, "in_channels", planes.shape[0]) == planes.shape[0],
+            "model first conv input channels match generated planes",
+        )
+
+    pi, value = nnet.predict(state)
 
     check_equal(pi.shape, (82,), "policy shape")
     check(math.isclose(float(pi.sum()), 1.0, rel_tol=1e-5, abs_tol=1e-5), f"policy sums to 1, got {pi.sum()}")

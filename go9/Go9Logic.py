@@ -10,6 +10,7 @@ Board data:
 Squares are stored and manipulated as (x,y) tuples.
 x is the column, y is the row.
 '''
+import numpy as np
 
 class Board():
 
@@ -83,6 +84,9 @@ class Board():
         illegal = not capture and len(self._get_liberties(self._get_group(x, y))) == 0
         self[x][y] = 0
         return not illegal
+    def _board_hash(self):
+        """Returns a hash of the board state."""
+        return np.asarray(self.pieces, dtype=np.int8).tobytes()
 
     def countDiff(self, color):
         """Counts the # pieces of the given color

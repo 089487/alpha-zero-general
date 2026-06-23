@@ -21,6 +21,7 @@ args = dotdict({
     'batch_size': 64,
     'cuda': torch.cuda.is_available(),
     'num_channels': 512,
+    'input_channels': 2,  # Number of input channels for the neural network
 })
 
 
@@ -39,6 +40,16 @@ class NNetWrapper(NeuralNet):
         else:
             board = board_or_state
         return board
+    def _state_to_planes(self, state):
+        if isinstance(state, tuple):
+            board, meta_data = state
+            pass_count, _ = meta_data
+        else:
+            board = state
+            pass_count = 0
+        stones = board
+        pass_plane = np.full_like(stones, pass_count/2.0, dtype=np.float32)
+        return np.stack([stones, pass_plane])  # Stack the planes
 
     def train(self, examples):
         """
@@ -58,7 +69,7 @@ class NNetWrapper(NeuralNet):
             for _ in t:
                 sample_ids = np.random.randint(len(examples), size=args.batch_size)
                 boards, pis, vs = list(zip(*[examples[i] for i in sample_ids]))
-                boards = [self._stones(board) for board in boards]
+                boards = [self._state_to_planes(board) for board in boards]
                 boards = torch.FloatTensor(np.array(boards).astype(np.float64))
                 target_pis = torch.FloatTensor(np.array(pis))
                 target_vs = torch.FloatTensor(np.array(vs).astype(np.float64))
@@ -91,10 +102,10 @@ class NNetWrapper(NeuralNet):
         start = time.time()
 
         # preparing input
-        board = self._stones(board)
+        board = self._state_to_planes(board)
         board = torch.FloatTensor(board.astype(np.float64))
         if args.cuda: board = board.contiguous().cuda()
-        board = board.view(1, self.board_x, self.board_y)
+        board = board.view(1, args.input_channels, self.board_x, self.board_y)
         self.nnet.eval()
         with torch.no_grad():
             pi, v = self.nnet(board)

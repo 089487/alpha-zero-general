@@ -22,7 +22,7 @@ class Go9Game(Game):
     def getInitBoard(self):
         # return initial board (numpy board,pass_count)
         b = Board(self.n)
-        return (np.array(b.pieces),0)
+        return (np.array(b.pieces),(0,None))
 
     def getBoardSize(self):
         # (a,b) tuple
@@ -33,33 +33,43 @@ class Go9Game(Game):
         return self.n*self.n + 1
 
     def getNextState(self, state, player, action):
-        board, pass_count = state
+        board, meta_data = state
+        pass_count,prev2_board_hash = meta_data
         # if player takes action on board, return next (board,player)
         # action must be a valid move
         if action == self.n*self.n:
-            return ((board,pass_count+1), -player)
+            return ((board, (pass_count+1, None)), -player)
         b = Board(self.n)
         b.pieces = np.copy(board)
+        prev_board_hash = b._board_hash()
         move = (int(action/self.n), action%self.n)
         b.execute_move(move, player)
-        return ((b.pieces, 0), -player)
+        return ((b.pieces, (0, prev_board_hash)), -player)
 
     def getValidMoves(self, state, player):
         # return a fixed size binary vector
-        board, pass_count = state
+        board, meta_data = state
+        pass_count, prev2_board_hash = meta_data
         valids = [0]*self.getActionSize()
         valids[-1] = 1 # in go pass always is a valid move
         b = Board(self.n)
         b.pieces = np.copy(board)
         legalMoves =  b.get_legal_moves(player)
         for x, y in legalMoves:
+            test_b = Board(self.n)
+            test_b.pieces = np.copy(board)
             valids[self.n*x+y]=1
+            test_b.execute_move((x,y), player)
+            test_b_hash = test_b._board_hash()
+            if prev2_board_hash is not None and test_b_hash == prev2_board_hash:
+                valids[self.n*x+y]=0
         return np.array(valids)
 
     def getGameEnded(self, state, player):
         # return 0 if not ended, 1 if player 1 won, -1 if player 1 lost
         # player = 1
-        board, pass_count = state
+        board, meta_data = state
+        pass_count,_ = meta_data
         b = Board(self.n)
         b.pieces = np.copy(board)
         if pass_count < 2:
@@ -73,12 +83,13 @@ class Go9Game(Game):
 
     def getCanonicalForm(self, state, player):
         # return state if player==1, else return -state if player==-1
-        board, pass_count = state
-        return (player*board, pass_count)
+        board, meta_data = state
+        return (player*board, meta_data)
 
     def getSymmetries(self, state, pi):
         # mirror, rotational
-        board, pass_count = state
+        board, meta_data = state
+        pass_count, prev2_board_hash = meta_data
         assert(len(pi) == self.n**2+1)  # 1 for pass
         pi_board = np.reshape(pi[:-1], (self.n, self.n))
         l = []
@@ -90,27 +101,31 @@ class Go9Game(Game):
                 if j:
                     newB = np.fliplr(newB)
                     newPi = np.fliplr(newPi)
-                l += [((newB, pass_count), list(newPi.ravel()) + [pi[-1]])]
+                l += [((newB, (pass_count, None)), list(newPi.ravel()) + [pi[-1]])]
         return l
 
     def stringRepresentation(self, state):
-        board, pass_count = state
+        board, meta_data = state
+        pass_count, _ = meta_data
         return board.tobytes() + str(pass_count).encode()
 
     def stringRepresentationReadable(self, state):
-        board, pass_count = state
+        board, meta_data = state
+        pass_count, _ = meta_data
         board_s = "".join(self.square_content[square] for row in board for square in row)
         return f"{pass_count};{board_s}"
 
     def getScore(self, state, player):
-        board, pass_count = state
+        board, meta_data = state
+        pass_count, _ = meta_data
         b = Board(self.n)
         b.pieces = np.copy(board)
         return b.countDiff(player) + b.countRegionDiff(player)
 
     @staticmethod
     def display(state):
-        board, pass_count = state
+        board, meta_data = state
+        pass_count, _ = meta_data
         n = board.shape[0]
         print("Pass count:", pass_count)
         print("   ", end="")
