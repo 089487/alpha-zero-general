@@ -67,7 +67,7 @@ class Go9Game(Game):
                 return 0
             if b.has_legal_moves(-player):
                 return 0
-        if b.countDiff(player) > 0:
+        if self.getScore(state,player) > 0:
             return 1
         return -1
 
@@ -95,7 +95,7 @@ class Go9Game(Game):
 
     def stringRepresentation(self, state):
         board, pass_count = state
-        return board.tostring() + str(pass_count).encode()
+        return board.tobytes() + str(pass_count).encode()
 
     def stringRepresentationReadable(self, state):
         board, pass_count = state
@@ -109,8 +109,10 @@ class Go9Game(Game):
         return b.countDiff(player) + b.countRegionDiff(player)
 
     @staticmethod
-    def display(board):
+    def display(state):
+        board, pass_count = state
         n = board.shape[0]
+        print("Pass count:", pass_count)
         print("   ", end="")
         for y in range(n):
             print(y, end=" ")
