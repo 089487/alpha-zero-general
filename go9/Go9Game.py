@@ -106,8 +106,9 @@ class Go9Game(Game):
 
     def stringRepresentation(self, state):
         board, meta_data = state
-        pass_count, _ = meta_data
-        return board.tobytes() + str(pass_count).encode()
+        pass_count, prev2_board_hash = meta_data
+        prev2_part = prev2_board_hash if prev2_board_hash is not None else b""
+        return board.tobytes() + "b|pass=" + str(pass_count).encode() + "b|prev2_hash=" + prev2_part  
 
     def stringRepresentationReadable(self, state):
         board, meta_data = state
