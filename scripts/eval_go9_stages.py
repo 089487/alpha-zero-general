@@ -273,22 +273,62 @@ def run_with_timeout(timeout_seconds, fn):
         signal.alarm(0)
 
 
+def state_stones(state):
+    if isinstance(state, np.ndarray):
+        return state
+    if isinstance(state, dict):
+        for key in ("stones", "board", "pieces"):
+            if key in state:
+                return np.asarray(state[key])
+    if isinstance(state, (tuple, list)) and len(state) >= 1:
+        return np.asarray(state[0])
+    raise AssertionError("state must expose a 9x9 stone board")
+
+
+def state_pass_count(state):
+    if isinstance(state, dict):
+        for key in ("consecutive_passes", "pass_count", "passes"):
+            if key in state:
+                return int(state[key])
+    if isinstance(state, (tuple, list)) and len(state) >= 2:
+        return int(state[1])
+    raise AssertionError(
+        "state must expose consecutive pass count, e.g. (stones, pass_count) or a dict with consecutive_passes"
+    )
+
+
 def eval_episode():
-    print("\n== Stage 11: Episode Smoke ==")
-    from Coach import Coach
+    print("\n== Stage 11: Two-Pass Ending ==")
     from go9.Go9Game import Go9Game
-    from go9.pytorch.NNet import NNetWrapper
 
     game = Go9Game(9)
-    nnet = NNetWrapper(game)
-    coach = Coach(game, nnet, tiny_args())
-    examples = run_with_timeout(30, coach.executeEpisode)
+    pass_action = game.getActionSize() - 1
 
-    check(len(examples) > 0, f"episode produced examples, got {len(examples)}")
-    board, pi, value = examples[0]
-    check_equal(board.shape, (9, 9), "example board shape")
-    check_equal(len(pi), 82, "example policy length")
-    check(-1.0001 <= float(value) <= 1.0001, f"example value is in [-1, 1], got {value}")
+    state0 = game.getInitBoard()
+    check_equal(state_stones(state0).shape, (9, 9), "initial state exposes 9x9 stones")
+    check_equal(state_pass_count(state0), 0, "initial consecutive pass count")
+    check_equal(game.getGameEnded(state0, 1), 0, "initial state is not terminal")
+
+    state1, player1 = game.getNextState(state0, 1, pass_action)
+    check_equal(player1, -1, "one pass flips player")
+    check_equal(state_pass_count(state1), 1, "one pass increments pass count")
+    check(np.array_equal(state_stones(state1), state_stones(state0)), "pass does not change stones")
+    check_equal(game.getGameEnded(state1, player1), 0, "one pass is not terminal")
+
+    state_after_move, player_after_move = game.getNextState(state1, player1, 0)
+    check_equal(player_after_move, 1, "normal move flips player")
+    check_equal(state_pass_count(state_after_move), 0, "normal move resets pass count")
+
+    state2, player2 = game.getNextState(state1, player1, pass_action)
+    check_equal(player2, 1, "second consecutive pass flips player")
+    check_equal(state_pass_count(state2), 2, "two passes set pass count to 2")
+    result = game.getGameEnded(state2, player2)
+    check(result != 0, f"two consecutive passes end the game, got {result}")
+
+    check(
+        game.stringRepresentation(state0) != game.stringRepresentation(state1),
+        "stringRepresentation distinguishes same stones with different pass counts",
+    )
 
 
 def eval_tiny_train():

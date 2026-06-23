@@ -263,18 +263,35 @@ Inspect:
 - Surrounded empty territory counts for the surrounding player.
 - Neutral empty space is not counted as either player's territory.
 
-## Stage 11: Episode Smoke
+## Stage 11: Two-Pass Ending
 
 Goal:
 
-- `Coach.executeEpisode()` finishes within a timeout.
-- It returns AlphaZero training examples.
+- Pass remains a legal Go action.
+- Two consecutive passes end the game.
+- Pass tracking must be part of the game state, not mutable global state on
+  `Go9Game`, so MCTS branches do not pollute each other.
 
 What to implement:
 
-- Make terminal/scoring robust enough that a self-play game ends.
-- If pass-history is not represented yet, use a temporary move-limit fallback
-  before attempting formal two-pass termination.
+- Extend the Go9 state representation so it can track at least:
+  - the 9x9 stone board
+  - consecutive pass count
+- Update all methods that consume or produce state:
+  - `getInitBoard`
+  - `getNextState`
+  - `getGameEnded`
+  - `getCanonicalForm`
+  - `getSymmetries`
+  - `stringRepresentation`
+  - model input preparation if the neural net still expects only 9x9 stones
+- Do not implement pass count as `self.consecutive_passes` on `Go9Game`.
+  MCTS explores many hypothetical branches with the same `game` object, so
+  mutable game-level pass state will be wrong.
+- After a non-pass move, reset consecutive pass count to 0.
+- After a pass move, increment consecutive pass count.
+- When consecutive pass count reaches 2, `getGameEnded` should return the
+  scoring result.
 
 Eval:
 
@@ -284,10 +301,12 @@ python scripts/eval_go9_stages.py --stage episode
 
 Inspect:
 
-- Episode returns at least one example.
-- Example board shape is `(9, 9)`.
-- Example policy length is 82.
-- Example value is in `[-1, 1]`.
+- Initial state has pass count 0.
+- One pass changes player and pass count becomes 1.
+- A normal move resets pass count to 0.
+- Two consecutive passes make `getGameEnded` return non-zero.
+- `stringRepresentation` distinguishes the same stone board with different
+  pass counts.
 
 ## Stage 12: Tiny Training Smoke
 
@@ -317,6 +336,5 @@ Inspect:
 
 Do these only after all staged evals above pass:
 
-- Two-pass ending.
 - Ko or superko.
 - Stronger residual network and richer input planes.
