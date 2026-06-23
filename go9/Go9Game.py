@@ -20,9 +20,9 @@ class Go9Game(Game):
         self.n = n
 
     def getInitBoard(self):
-        # return initial board (numpy board)
+        # return initial board (numpy board,pass_count)
         b = Board(self.n)
-        return np.array(b.pieces)
+        return (np.array(b.pieces),0)
 
     def getBoardSize(self):
         # (a,b) tuple
@@ -32,19 +32,21 @@ class Go9Game(Game):
         # return number of actions
         return self.n*self.n + 1
 
-    def getNextState(self, board, player, action):
+    def getNextState(self, state, player, action):
+        board, pass_count = state
         # if player takes action on board, return next (board,player)
         # action must be a valid move
         if action == self.n*self.n:
-            return (board, -player)
+            return ((board,pass_count+1), -player)
         b = Board(self.n)
         b.pieces = np.copy(board)
         move = (int(action/self.n), action%self.n)
         b.execute_move(move, player)
-        return (b.pieces, -player)
+        return ((b.pieces, 0), -player)
 
-    def getValidMoves(self, board, player):
+    def getValidMoves(self, state, player):
         # return a fixed size binary vector
+        board, pass_count = state
         valids = [0]*self.getActionSize()
         valids[-1] = 1 # in go pass always is a valid move
         b = Board(self.n)
@@ -54,25 +56,29 @@ class Go9Game(Game):
             valids[self.n*x+y]=1
         return np.array(valids)
 
-    def getGameEnded(self, board, player):
+    def getGameEnded(self, state, player):
         # return 0 if not ended, 1 if player 1 won, -1 if player 1 lost
         # player = 1
+        board, pass_count = state
         b = Board(self.n)
         b.pieces = np.copy(board)
-        if b.has_legal_moves(player):
-            return 0
-        if b.has_legal_moves(-player):
-            return 0
+        if pass_count < 2:
+            if b.has_legal_moves(player):
+                return 0
+            if b.has_legal_moves(-player):
+                return 0
         if b.countDiff(player) > 0:
             return 1
         return -1
 
-    def getCanonicalForm(self, board, player):
+    def getCanonicalForm(self, state, player):
         # return state if player==1, else return -state if player==-1
-        return player*board
+        board, pass_count = state
+        return (player*board, pass_count)
 
-    def getSymmetries(self, board, pi):
+    def getSymmetries(self, state, pi):
         # mirror, rotational
+        board, pass_count = state
         assert(len(pi) == self.n**2+1)  # 1 for pass
         pi_board = np.reshape(pi[:-1], (self.n, self.n))
         l = []
@@ -84,17 +90,20 @@ class Go9Game(Game):
                 if j:
                     newB = np.fliplr(newB)
                     newPi = np.fliplr(newPi)
-                l += [(newB, list(newPi.ravel()) + [pi[-1]])]
+                l += [((newB, pass_count), list(newPi.ravel()) + [pi[-1]])]
         return l
 
-    def stringRepresentation(self, board):
-        return board.tostring()
+    def stringRepresentation(self, state):
+        board, pass_count = state
+        return board.tostring() + str(pass_count).encode()
 
-    def stringRepresentationReadable(self, board):
+    def stringRepresentationReadable(self, state):
+        board, pass_count = state
         board_s = "".join(self.square_content[square] for row in board for square in row)
-        return board_s
+        return f"{pass_count};{board_s}"
 
-    def getScore(self, board, player):
+    def getScore(self, state, player):
+        board, pass_count = state
         b = Board(self.n)
         b.pieces = np.copy(board)
         return b.countDiff(player) + b.countRegionDiff(player)
