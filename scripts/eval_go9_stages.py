@@ -39,6 +39,49 @@ def fill_board(board, color=1):
             board.pieces[x][y] = color
 
 
+def state_stones(state):
+    if isinstance(state, np.ndarray):
+        return state
+    if isinstance(state, dict):
+        for key in ("stones", "board", "pieces"):
+            if key in state:
+                return np.asarray(state[key])
+    if isinstance(state, (tuple, list)) and len(state) >= 1:
+        return np.asarray(state[0])
+    raise AssertionError("state must expose a 9x9 stone board")
+
+
+def state_pass_count(state):
+    if isinstance(state, dict):
+        for key in ("consecutive_passes", "pass_count", "passes"):
+            if key in state:
+                return int(state[key])
+    if isinstance(state, (tuple, list)) and len(state) >= 2:
+        return int(state[1])
+    raise AssertionError(
+        "state must expose consecutive pass count, e.g. (stones, pass_count) or a dict with consecutive_passes"
+    )
+
+
+def state_with_stones(state, stones):
+    stones = np.asarray(stones)
+    if isinstance(state, dict):
+        copied = dict(state)
+        for key in ("stones", "board", "pieces"):
+            if key in copied:
+                copied[key] = stones
+                return copied
+        copied["stones"] = stones
+        return copied
+    if isinstance(state, tuple):
+        return (stones,) + state[1:]
+    if isinstance(state, list):
+        return [stones] + list(state[1:])
+    if isinstance(state, np.ndarray):
+        return stones
+    raise AssertionError("state type is unsupported")
+
+
 def eval_empty():
     print("\n== Stage 1: Empty Board ==")
     board = fresh_board()
@@ -142,24 +185,25 @@ def eval_game():
     from go9.Go9Game import Go9Game
 
     game = Go9Game(9)
-    board = game.getInitBoard()
-    valids = game.getValidMoves(board, 1)
+    state = game.getInitBoard()
+    valids = game.getValidMoves(state, 1)
 
-    check_equal(board.shape, (9, 9), "initial game board shape")
+    check_equal(state_stones(state).shape, (9, 9), "initial game state exposes 9x9 stones")
     check_equal(valids.shape, (82,), "valid move vector shape")
     check_equal(int(valids[-1]), 1, "pass action is valid")
     check(np.all((valids == 0) | (valids == 1)), "valid move vector is binary")
 
-    next_board, next_player = game.getNextState(board, 1, 0)
-    check_equal(next_board.shape, (9, 9), "next board shape")
+    next_state, next_player = game.getNextState(state, 1, 0)
+    check_equal(state_stones(next_state).shape, (9, 9), "next state exposes 9x9 stones")
     check_equal(next_player, -1, "next player flips")
-    check_equal(next_board[0][0], 1, "action 0 places at board coordinate (0, 0)")
+    check_equal(state_stones(next_state)[0][0], 1, "action 0 places at board coordinate (0, 0)")
 
     pi = np.ones(game.getActionSize(), dtype=np.float64) / game.getActionSize()
-    syms = game.getSymmetries(board, pi)
+    syms = game.getSymmetries(state, pi)
     check_equal(len(syms), 8, "symmetry count")
-    for sym_board, sym_pi in syms:
-        check_equal(sym_board.shape, (9, 9), "symmetry board shape")
+    for sym_state, sym_pi in syms:
+        check_equal(state_stones(sym_state).shape, (9, 9), "symmetry state exposes 9x9 stones")
+        check_equal(state_pass_count(sym_state), state_pass_count(state), "symmetry preserves pass count")
         check_equal(len(sym_pi), 82, "symmetry policy length")
         check_equal(sym_pi[-1], pi[-1], "pass probability is unchanged by symmetry")
 
@@ -202,13 +246,14 @@ def eval_terminal():
     from go9.Go9Game import Go9Game
 
     game = Go9Game(9)
-    board = game.getInitBoard()
-    check_equal(game.getGameEnded(board, 1), 0, "empty board is not terminal")
+    state = game.getInitBoard()
+    check_equal(game.getGameEnded(state, 1), 0, "empty board is not terminal")
 
     full = np.ones((9, 9), dtype=int)
     full[0][0] = -1
-    result_for_black = game.getGameEnded(full, 1)
-    result_for_white = game.getGameEnded(full, -1)
+    full_state = state_with_stones(state, full)
+    result_for_black = game.getGameEnded(full_state, 1)
+    result_for_white = game.getGameEnded(full_state, -1)
     check(result_for_black != 0, f"full board is terminal for player 1, got {result_for_black}")
     check(result_for_white != 0, f"full board is terminal for player -1, got {result_for_white}")
     check_equal(result_for_black, -result_for_white, "terminal result changes sign by player perspective")
@@ -224,20 +269,23 @@ def eval_scoring():
     board[0][0] = 1
     board[1][0] = 1
     board[8][8] = -1
-    check(game.getScore(board, 1) > 0, "player with more stones has positive score")
-    check(game.getScore(board, -1) < 0, "opponent perspective has negative score")
+    state = state_with_stones(game.getInitBoard(), board)
+    check(game.getScore(state, 1) > 0, "player with more stones has positive score")
+    check(game.getScore(state, -1) < 0, "opponent perspective has negative score")
 
     territory = np.zeros((9, 9), dtype=int)
     territory[0][1] = 1
     territory[1][0] = 1
     territory[1][2] = 1
     territory[2][1] = 1
-    check(game.getScore(territory, 1) >= 5, "surrounded point counts as player 1 area")
+    territory_state = state_with_stones(game.getInitBoard(), territory)
+    check(game.getScore(territory_state, 1) >= 5, "surrounded point counts as player 1 area")
 
     neutral = np.zeros((9, 9), dtype=int)
     neutral[0][1] = 1
     neutral[1][0] = -1
-    check_equal(game.getScore(neutral, 1), 0, "neutral/shared empty area is not counted")
+    neutral_state = state_with_stones(game.getInitBoard(), neutral)
+    check_equal(game.getScore(neutral_state, 1), 0, "neutral/shared empty area is not counted")
 
 
 def tiny_args(checkpoint="./temp/go9_eval/"):
@@ -271,30 +319,6 @@ def run_with_timeout(timeout_seconds, fn):
         return fn()
     finally:
         signal.alarm(0)
-
-
-def state_stones(state):
-    if isinstance(state, np.ndarray):
-        return state
-    if isinstance(state, dict):
-        for key in ("stones", "board", "pieces"):
-            if key in state:
-                return np.asarray(state[key])
-    if isinstance(state, (tuple, list)) and len(state) >= 1:
-        return np.asarray(state[0])
-    raise AssertionError("state must expose a 9x9 stone board")
-
-
-def state_pass_count(state):
-    if isinstance(state, dict):
-        for key in ("consecutive_passes", "pass_count", "passes"):
-            if key in state:
-                return int(state[key])
-    if isinstance(state, (tuple, list)) and len(state) >= 2:
-        return int(state[1])
-    raise AssertionError(
-        "state must expose consecutive pass count, e.g. (stones, pass_count) or a dict with consecutive_passes"
-    )
 
 
 def eval_episode():
@@ -331,6 +355,65 @@ def eval_episode():
     )
 
 
+def eval_ko():
+    print("\n== Stage 13: Ko / Superko ==")
+    from go9.Go9Game import Go9Game
+
+    game = Go9Game(9)
+    state0 = game.getInitBoard()
+    stones = np.zeros((9, 9), dtype=int)
+
+    # Ko shape using board[x][y]. Black captures at (1, 0), white must not be
+    # allowed to immediately recapture at (1, 1), because that recreates state0.
+    stones[1][1] = 1
+    stones[0][0] = 1
+    stones[2][0] = 1
+    stones[0][1] = -1
+    stones[2][1] = -1
+    stones[1][2] = -1
+
+    state0 = state_with_stones(state0, stones)
+    capture_action = 1 * game.n + 0
+    recapture_action = 1 * game.n + 1
+
+    state1, next_player = game.getNextState(state0, -1, capture_action)
+    check_equal(next_player, 1, "black ko capture gives turn to white")
+    check_equal(state_stones(state1)[1][1], 0, "ko capture removes the white stone")
+    check_equal(state_stones(state1)[1][0], -1, "ko capturing stone is placed")
+
+    white_valids = game.getValidMoves(state1, next_player)
+    check_equal(int(white_valids[recapture_action]), 0, "immediate ko recapture is illegal")
+
+
+def eval_enhanced_model():
+    print("\n== Stage 14: Enhanced Model Input ==")
+    from go9.Go9Game import Go9Game
+    from go9.pytorch.NNet import NNetWrapper
+
+    game = Go9Game(9)
+    nnet = NNetWrapper(game)
+
+    plane_fn = None
+    for name in ("_planes", "_state_to_planes", "state_to_planes"):
+        if hasattr(nnet, name):
+            plane_fn = getattr(nnet, name)
+            break
+    check(plane_fn is not None, "NNetWrapper exposes a state-to-planes helper")
+
+    state0 = game.getInitBoard()
+    pass_state, _ = game.getNextState(state0, 1, game.getActionSize() - 1)
+    planes0 = np.asarray(plane_fn(state0))
+    planes1 = np.asarray(plane_fn(pass_state))
+
+    check_equal(planes0.shape[-2:], (9, 9), "feature planes have 9x9 spatial shape")
+    check(planes0.ndim == 3 and planes0.shape[0] >= 2, f"feature planes include multiple channels, got {planes0.shape}")
+    check(not np.array_equal(planes0, planes1), "feature planes encode pass-count or state metadata")
+
+    conv1 = getattr(nnet.nnet, "conv1", None)
+    check(conv1 is not None and getattr(conv1, "in_channels", None) == planes0.shape[0],
+          "Go9NNet first conv input channels match feature plane count")
+
+
 def eval_tiny_train():
     print("\n== Stage 12: Tiny Training Smoke ==")
     from Coach import Coach
@@ -359,6 +442,8 @@ STAGES = {
     "scoring": eval_scoring,
     "episode": eval_episode,
     "tiny-train": eval_tiny_train,
+    "ko": eval_ko,
+    "enhanced-model": eval_enhanced_model,
 }
 
 ORDER = [
@@ -374,6 +459,8 @@ ORDER = [
     "scoring",
     "episode",
     "tiny-train",
+    "ko",
+    "enhanced-model",
 ]
 
 

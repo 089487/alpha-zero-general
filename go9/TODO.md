@@ -18,6 +18,8 @@ python scripts/eval_go9_stages.py --stage terminal
 python scripts/eval_go9_stages.py --stage scoring
 python scripts/eval_go9_stages.py --stage episode
 python scripts/eval_go9_stages.py --stage tiny-train
+python scripts/eval_go9_stages.py --stage ko
+python scripts/eval_go9_stages.py --stage enhanced-model
 ```
 
 Use `--stage all` only after the earlier stages pass.
@@ -332,9 +334,65 @@ Inspect:
 - Arena comparison finishes.
 - `temp/go9_eval/` contains checkpoint/example output.
 
-## Later Work
+## Stage 13: Ko / Superko
 
-Do these only after all staged evals above pass:
+Goal:
 
-- Ko or superko.
-- Stronger residual network and richer input planes.
+- Immediate ko recapture is illegal.
+- State history needed for ko/superko is part of the game state, not mutable
+  global state on `Go9Game`.
+- `stringRepresentation` still uniquely identifies all state fields MCTS needs.
+
+What to implement:
+
+- Extend state beyond `(board, pass_count)` to carry enough history for ko or
+  positional superko.
+- Update `getNextState` to append/update history after each legal move.
+- Update `getValidMoves` or `_is_legal_move` so a move recreating a forbidden
+  previous position is illegal.
+- Keep the neural net free to ignore ko history in v1; the game/MCTS state must
+  still include it.
+
+Eval:
+
+```bash
+python scripts/eval_go9_stages.py --stage ko
+```
+
+Inspect:
+
+- A constructed ko capture removes the captured stone.
+- The immediate recapture action is marked invalid.
+
+## Stage 14: Enhanced Model Input
+
+Goal:
+
+- Move beyond the single 9x9 stone plane.
+- Build explicit feature planes for model input.
+- Keep `Go9NNet` input channels aligned with those feature planes.
+
+What to implement:
+
+- Add a state-to-feature-planes helper on `NNetWrapper`, for example
+  `_planes`, `_state_to_planes`, or `state_to_planes`.
+- The helper should return a numeric array shaped `(channels, 9, 9)`.
+- Include at least:
+  - canonical stones
+  - pass-count or state metadata plane
+- Update `Go9NNet.conv1` to accept the same number of channels.
+- Update `train` and `predict` to batch/use feature planes instead of raw
+  9x9 boards.
+
+Eval:
+
+```bash
+python scripts/eval_go9_stages.py --stage enhanced-model
+```
+
+Inspect:
+
+- Feature planes have spatial shape 9x9.
+- There are at least two input channels.
+- Different pass-count states produce different feature planes.
+- The first convolution input channel count matches the feature-plane count.
